@@ -29,6 +29,18 @@ const daysInMonth = (month, year) => new Date(year, month, 0).getDate();
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Mediana em vez de média simples: usada para estimar o "programado" de um dia
+// típico (planejadoDiario). A média aritmética é muito sensível a dias fora
+// da curva (ex.: um dia pontual com programado bem acima do normal), o que
+// distorceria a projeção dos dias restantes. A mediana reflete melhor o que
+// costuma ser programado em um dia comum.
+function mediana(valores) {
+  const nums = valores.filter((v) => Number.isFinite(v)).slice().sort((a, b) => a - b);
+  if (nums.length === 0) return 0;
+  const meio = Math.floor(nums.length / 2);
+  return nums.length % 2 !== 0 ? nums[meio] : (nums[meio - 1] + nums[meio]) / 2;
+}
+
 /* ============================== LINHAS DE PRODUÇÃO ============================== */
 
 const LINHAS = [
@@ -199,11 +211,16 @@ function computeCalc(meta, producoesInput) {
     const metaPercentual = Number(meta.metaPercentual || 0);
 
     // "Produção planejada por dia" não é mais configurada manualmente — o dashboard
-    // deriva esse valor da própria produção lançada (média do programado informado
-    // em cada lançamento), servindo apenas de referência para dias sem programado.
+    // deriva esse valor da própria produção lançada, servindo apenas de referência
+    // para dias sem programado e para estimar os dias restantes. Usa a MEDIANA
+    // (não a média) dos dias já programados: assim um dia pontual fora da curva
+    // (ex.: um programado excepcionalmente alto por um pedido grande) não puxa
+    // a estimativa de "dia típico" pra cima e não distorce a projeção dos dias
+    // que ainda faltam.
     const planejadoAcumulado = producoes.reduce((s, p) => s + Number(p.planejado || 0), 0);
-    const diasComPlanejado = producoes.filter((p) => Number(p.planejado || 0) > 0).length;
-    const planejadoDiario = diasComPlanejado > 0 ? planejadoAcumulado / diasComPlanejado : 0;
+    const valoresPlanejados = producoes.map((p) => Number(p.planejado || 0)).filter((v) => v > 0);
+    const diasComPlanejado = valoresPlanejados.length;
+    const planejadoDiario = mediana(valoresPlanejados);
 
     const producaoAcumulada = producoes.reduce((s, p) => s + Number(p.quantidade || 0), 0);
     const diasRealizados = producoes.length;
@@ -1309,7 +1326,7 @@ function Relatorios({ t, meta, producoes, calc, linha }) {
     const resumo = [
       ["Relatório de produção", linha, `${MESES[meta.mes - 1]}/${meta.ano}`], [],
       ["Meta mensal (%)", meta.metaPercentual],
-      ["Produção planejada por dia — média dos lançamentos (un)", +calc.planejadoDiario.toFixed(2)],
+      ["Produção planejada por dia — mediana dos lançamentos (un)", +calc.planejadoDiario.toFixed(2)],
       ["Produção acumulada (un)", calc.producaoAcumulada],
       ["Déficit acumulado (un)", calc.deficitAcumuladoUnidades],
       ["Média atual (%)", +calc.percentualMedioAtual.toFixed(2)],
